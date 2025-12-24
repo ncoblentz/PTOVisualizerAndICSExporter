@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Weekday Calendar with Holidays</title>
+    <title>Multi-Select Calendar</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -51,12 +51,11 @@
             background-color: #0056b3;
         }
         #save-state-btn {
-            background-color: #28a745; /* Green */
+            background-color: #28a745;
         }
         #save-state-btn:hover {
             background-color: #218838;
         }
-
 
         /* --- Palette --- */
         #palette {
@@ -147,7 +146,7 @@
         .day-headers,
         .days-grid {
             display: grid;
-            grid-template-columns: repeat(5, 1fr); /* 5 columns for M-F */
+            grid-template-columns: repeat(7, 1fr);
             gap: 5px;
         }
 
@@ -159,8 +158,10 @@
             padding-bottom: 5px;
         }
 
+        /* --- Updated Day Styles --- */
         .day {
             height: 38px;
+            position: relative; 
             display: flex;
             align-items: center;
             justify-content: center;
@@ -168,31 +169,68 @@
             border-radius: 5px;
             cursor: pointer;
             font-size: 0.9em;
-            transition: all 0.1s ease-in-out;
-            position: relative;
+            /* REMOVED: overflow: hidden; -> This allows the H badge to extend out */
+            transition: transform 0.1s ease-in-out;
+            z-index: 1;
         }
 
         .day:hover {
-            background-color: #e0e0e0;
             transform: scale(1.05);
+            z-index: 10;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
 
-        /* --- Holiday Styling --- */
+        /* The background container holds the colored stripes */
+        .color-background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            z-index: 0; 
+            /* ADDED: Clip the stripes here instead of on the parent */
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .color-stripe {
+            flex: 1; 
+            height: 100%;
+        }
+
+        .day-number {
+            position: relative;
+            z-index: 2; 
+            pointer-events: none; 
+            font-weight: 500;
+            text-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
+        }
+
+        .day.weekend {
+            background-color: #eaeaea;
+            color: #666;
+        }
+
+        /* Holiday marker sits on top of everything */
         .day.holiday::after {
             content: ' H ';
             position: absolute;
-            top: -5px;
-            right: -5px;
+            top: -6px;
+            right: -6px;
             background: #ef4444;
             color: white;
-            font-size: 8px;
+            font-size: 9px; /* Slightly larger for visibility */
             font-weight: bold;
             border-radius: 50%;
-            width: 14px;
-            height: 14px;
+            width: 16px;
+            height: 16px;
             display: flex;
             align-items: center;
             justify-content: center;
+            z-index: 20; /* Ensure it is above everything */
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+            border: 1px solid #fff; /* Small border to separate from grid */
         }
 
         .empty-cell {
@@ -247,8 +285,7 @@
 </head>
 <body>
 
-    <h1>Weekday Calendar</h1>
-
+    <h1>Multi-Select Calendar</h1>
     <div id="year-selector">
         <label for="year-input">Enter Year:</label>
         <input type="number" id="year-input" value="2026" min="1900" max="2100">
@@ -257,10 +294,10 @@
     </div>
 
     <div id="palette">
-        </div>
+    </div>
 
     <div id="calendar-container">
-        </div>
+    </div>
 
     <div id="colored-dates-list">
         <h2>Colored Dates (Copy-Friendly)</h2>
@@ -287,16 +324,14 @@
                 "January", "February", "March", "April", "May", "June",
                 "July", "August", "September", "October", "November", "December"
             ];
-            const weekdayHeaders = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+            const weekdayHeaders = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-            // DOM Elements
             const calendarContainer = document.getElementById('calendar-container');
             const paletteContainer = document.getElementById('palette');
             const datesOutput = document.getElementById('dates-output');
             const yearInput = document.getElementById('year-input');
             const loadYearBtn = document.getElementById('load-year-btn');
             const saveStateBtn = document.getElementById('save-state-btn'); 
-
             
             // --- 2. HOLIDAY CALCULATION LOGIC ---
 
@@ -321,8 +356,8 @@
             }
 
             function getLastMonday(month, year) {
-                const date = new Date(year, month + 1, 0); // Last day of month
-                while (date.getDay() !== 1) { // 1 = Monday
+                const date = new Date(year, month + 1, 0); 
+                while (date.getDay() !== 1) { 
                     date.setDate(date.getDate() - 1);
                 }
                 return date;
@@ -406,7 +441,18 @@
 
             function updateCounters() {
                 for (const key in palette) {
-                    palette[key].count = document.querySelectorAll(`.day[data-color-key="${key}"]`).length;
+                    palette[key].count = 0;
+                }
+                const allDays = document.querySelectorAll('.day');
+                allDays.forEach(day => {
+                    const activeColors = JSON.parse(day.dataset.activeColors || '[]');
+                    activeColors.forEach(colorKey => {
+                        if (palette[colorKey]) {
+                            palette[colorKey].count++;
+                        }
+                    });
+                });
+                for (const key in palette) {
                     document.getElementById(`count-${key}`).textContent = palette[key].count;
                 }
             }
@@ -445,9 +491,10 @@
 
                     const firstDay = new Date(year, month, 1);
                     const daysInMonth = new Date(year, month + 1, 0).getDate();
-                    const firstDayOfWeek = firstDay.getDay();
+                    const firstDayOfWeek = firstDay.getDay(); 
 
-                    const paddingDays = [0, 0, 1, 2, 3, 4, 0][firstDayOfWeek];
+                    const paddingDays = firstDayOfWeek;
+                    
                     for (let i = 0; i < paddingDays; i++) {
                         daysGrid.appendChild(document.createElement('div')).className = 'empty-cell';
                     }
@@ -456,18 +503,30 @@
                         const date = new Date(year, month, day);
                         const dayOfWeek = date.getDay();
 
-                        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-                            const dayCell = document.createElement('div');
-                            dayCell.className = 'day';
-                            dayCell.textContent = day;
-                            const dateString = date.toISOString().split('T')[0];
-                            dayCell.dataset.date = dateString;
-                            
-                            if (holidaySet.has(dateString)) {
-                                dayCell.classList.add('holiday');
-                            }
-                            daysGrid.appendChild(dayCell);
+                        const dayCell = document.createElement('div');
+                        dayCell.className = 'day';
+                        dayCell.dataset.activeColors = '[]'; 
+
+                        const dateString = date.toISOString().split('T')[0];
+                        dayCell.dataset.date = dateString;
+
+                        const bgDiv = document.createElement('div');
+                        bgDiv.className = 'color-background';
+                        dayCell.appendChild(bgDiv);
+
+                        const numberSpan = document.createElement('span');
+                        numberSpan.className = 'day-number';
+                        numberSpan.textContent = day;
+                        dayCell.appendChild(numberSpan);
+
+                        if (dayOfWeek === 0 || dayOfWeek === 6) {
+                            dayCell.classList.add('weekend');
                         }
+                        
+                        if (holidaySet.has(dateString)) {
+                            dayCell.classList.add('holiday');
+                        }
+                        daysGrid.appendChild(dayCell);
                     }
                     monthDiv.appendChild(daysGrid);
                     calendarContainer.appendChild(monthDiv);
@@ -485,8 +544,24 @@
                 generateCalendar(year);
             }
 
+            // --- 5. RENDER HELPERS ---
 
-            // --- 5. URL STATE MANAGEMENT ---
+            function renderDayVisuals(dayCell) {
+                const activeColors = JSON.parse(dayCell.dataset.activeColors || '[]');
+                const bgDiv = dayCell.querySelector('.color-background');
+                bgDiv.innerHTML = ''; 
+
+                activeColors.forEach(key => {
+                    if (palette[key]) {
+                        const stripe = document.createElement('div');
+                        stripe.className = 'color-stripe';
+                        stripe.style.backgroundColor = palette[key].hex;
+                        bgDiv.appendChild(stripe);
+                    }
+                });
+            }
+
+            // --- 6. URL STATE MANAGEMENT ---
             
             function restoreLabelsFromURL(params) {
                 for (const key in palette) {
@@ -504,8 +579,12 @@
                         dateStrings.forEach(dateString => {
                             const dayCell = document.querySelector(`.day[data-date="${dateString}"]`);
                             if (dayCell) {
-                                dayCell.style.backgroundColor = palette[key].hex;
-                                dayCell.dataset.colorKey = key;
+                                const currentColors = JSON.parse(dayCell.dataset.activeColors || '[]');
+                                if (!currentColors.includes(key)) {
+                                    currentColors.push(key);
+                                    dayCell.dataset.activeColors = JSON.stringify(currentColors);
+                                    renderDayVisuals(dayCell);
+                                }
                             }
                         });
                     }
@@ -517,13 +596,15 @@
                 params.set('year', yearInput.value);
                 
                 const colorMap = {};
-                document.querySelectorAll('.day[data-color-key]').forEach(day => {
-                    const key = day.dataset.colorKey;
+                document.querySelectorAll('.day').forEach(day => {
+                    const activeColors = JSON.parse(day.dataset.activeColors || '[]');
                     const date = day.dataset.date;
-                    if (!colorMap[key]) {
-                        colorMap[key] = [];
-                    }
-                    colorMap[key].push(date);
+                    activeColors.forEach(key => {
+                        if (!colorMap[key]) {
+                            colorMap[key] = [];
+                        }
+                        colorMap[key].push(date);
+                    });
                 });
 
                 for (const key in colorMap) {
@@ -542,33 +623,27 @@
 
                 const newUrl = `${window.location.pathname}?${params.toString()}`;
                 window.history.pushState({ path: newUrl }, '', newUrl);
-                
-                alert("State saved to URL. You can now bookmark or share this link.");
+                alert("State saved to URL.");
             }
 
-
-            // --- 6. EVENT HANDLING & LIST UPDATING ---
+            // --- 7. EVENT HANDLING & LIST UPDATING ---
 
             function handleDayClick(e) {
-                if (!e.target.classList.contains('day')) return;
+                const dayCell = e.target.closest('.day');
+                if (!dayCell) return;
 
-                const dayCell = e.target;
-                const oldColorKey = dayCell.dataset.colorKey;
-                const newColorKey = selectedColorKey;
+                const currentColors = JSON.parse(dayCell.dataset.activeColors || '[]');
+                const colorIndex = currentColors.indexOf(selectedColorKey);
 
-                if (oldColorKey) {
-                    if (oldColorKey === newColorKey) {
-                        dayCell.style.backgroundColor = '';
-                        delete dayCell.dataset.colorKey;
-                    } else {
-                        dayCell.style.backgroundColor = palette[newColorKey].hex;
-                        dayCell.dataset.colorKey = newColorKey;
-                    }
+                if (colorIndex > -1) {
+                    currentColors.splice(colorIndex, 1);
                 } else {
-                    dayCell.style.backgroundColor = palette[newColorKey].hex;
-                    dayCell.dataset.colorKey = newColorKey;
+                    currentColors.push(selectedColorKey);
                 }
 
+                dayCell.dataset.activeColors = JSON.stringify(currentColors);
+                
+                renderDayVisuals(dayCell);
                 updateCounters();
                 updateColoredDatesList();
             }
@@ -584,49 +659,54 @@
 
                 for (const key in palette) {
                     const colorData = palette[key];
-                    const coloredDays = document.querySelectorAll(`.day[data-color-key="${key}"]`);
+                    const matchingDays = [];
+                    document.querySelectorAll('.day').forEach(day => {
+                        const activeColors = JSON.parse(day.dataset.activeColors || '[]');
+                        if (activeColors.includes(key)) {
+                            matchingDays.push(day);
+                        }
+                    });
 
-                    if (coloredDays.length > 0) {
+                    if (matchingDays.length > 0) {
                         listContent += `<strong>${colorData.name.toUpperCase()} (${colorData.hex})</strong>`;
                         listContent += `<button class="export-btn" data-color-key="${key}">Export (iCal)</button>\n`;
                         
                         const dates = [];
-                        coloredDays.forEach(day => {
+                        matchingDays.forEach(day => {
                             dates.push(new Date(day.dataset.date + 'T12:00:00'));
                         });
 
                         dates.sort((a, b) => a - b);
-
                         dates.forEach(date => {
                             listContent += `- ${date.toLocaleDateString('en-US', formatOptions)}\n`;
                         });
-                        
                         listContent += '\n';
                     }
                 }
                 datesOutput.innerHTML = listContent || 'No days colored yet.';
             }
 
-            
-            // --- 7. NEW/MODIFIED: iCAL EXPORT FUNCTIONS ---
+            // --- 8. iCAL EXPORT FUNCTIONS ---
 
-            /**
-             * MODIFIED: Generates an iCal file with TWO events per date:
-             * 1. An All-Day "Out of Office" event.
-             * 2. A Timed (8am-5pm) "Out of Office" event.
-             */
             function generateICal(colorKey) {
                 const colorData = palette[colorKey];
                 const label = colorData.name;
-                const coloredDays = document.querySelectorAll(`.day[data-color-key="${colorKey}"]`);
                 
-                if (coloredDays.length === 0) {
+                const matchingDays = [];
+                document.querySelectorAll('.day').forEach(day => {
+                    const activeColors = JSON.parse(day.dataset.activeColors || '[]');
+                    if (activeColors.includes(colorKey)) {
+                        matchingDays.push(day);
+                    }
+                });
+
+                if (matchingDays.length === 0) {
                     alert("No dates selected for this label.");
                     return;
                 }
 
                 const dates = [];
-                coloredDays.forEach(day => dates.push(day.dataset.date)); // "YYYY-MM-DD"
+                matchingDays.forEach(day => dates.push(day.dataset.date)); 
                 dates.sort();
 
                 let icalContent = [
@@ -635,19 +715,14 @@
                     'PRODID:-//CalendarGenerator//EN',
                 ];
 
-                // Get current timestamp for the file
                 const dtstamp = new Date().toISOString().replace(/[-:.]/g, '') + 'Z';
-                // Get user's local timezone
                 const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
                 
-                dates.forEach(dateString => { // dateString is "YYYY-MM-DD"
+                dates.forEach(dateString => { 
                     const yyyymmdd = dateString.replace(/-/g, '');
 
-                    // --- Event 1: All-Day OOO ---
-                    
-                    // Get date object at noon to avoid timezone issues
+                    // Event 1: All-Day OOO
                     const startDate = new Date(dateString + 'T12:00:00');
-                    // All-day events end on the *next* day
                     const nextDayDate = new Date(startDate);
                     nextDayDate.setDate(startDate.getDate() + 1);
                     const yyyymmdd_next = nextDayDate.toISOString().split('T')[0].replace(/-/g, '');
@@ -659,83 +734,66 @@
                         `DTSTART;VALUE=DATE:${yyyymmdd}`,
                         `DTEND;VALUE=DATE:${yyyymmdd_next}`,
                         `SUMMARY:Out of Office - ${label}`,
-                        'TRANSP:OPAQUE', // "Busy"
+                        'TRANSP:OPAQUE',
                         'X-GOOGLE-CALENDAR-EVENT-TYPE:OUT_OF_OFFICE',
                         'END:VEVENT'
                     );
 
-                    // --- Event 2: Timed (8-5) OOO ---
+                    // Event 2: Timed (8-5) OOO
                     icalContent.push(
                         'BEGIN:VEVENT',
                         `UID:${yyyymmdd}-timed-${colorKey}@calendar.generator`,
                         `DTSTAMP:${dtstamp}`,
-                        `DTSTART;TZID=${timeZone}:${yyyymmdd}T080000`, // 8:00 AM in user's timezone
-                        `DTEND;TZID=${timeZone}:${yyyymmdd}T170000`,   // 5:00 PM in user's timezone
+                        `DTSTART;TZID=${timeZone}:${yyyymmdd}T080000`, 
+                        `DTEND;TZID=${timeZone}:${yyyymmdd}T170000`,
                         `SUMMARY:Out of Office - ${label}`,
-                        'TRANSP:OPAQUE', // "Busy"
+                        'TRANSP:OPAQUE',
                         'X-GOOGLE-CALENDAR-EVENT-TYPE:OUT_OF_OFFICE',
                         'END:VEVENT'
                     );
                 });
 
                 icalContent.push('END:VCALENDAR');
-                
                 const filename = `${label.replace(/[^a-z0-9]/gi, '_') || 'Calendar'}.ics`;
-                
                 downloadFile(filename, icalContent.join('\r\n'));
             }
 
-            /**
-             * Triggers a browser download for a text file.
-             */
             function downloadFile(filename, content) {
                 const element = document.createElement('a');
                 const blob = new Blob([content], { type: 'text/calendar;charset=utf-8' });
                 element.href = URL.createObjectURL(blob);
                 element.download = filename;
-                
-                document.body.appendChild(element); // Required for Firefox
+                document.body.appendChild(element); 
                 element.click();
                 document.body.removeChild(element);
-                URL.revokeObjectURL(element.href); // Clean up
+                URL.revokeObjectURL(element.href); 
             }
 
-
-            // --- 8. INITIALIZATION ---
+            // --- 9. INITIALIZATION ---
             
             function initializeApp() {
                 const params = new URLSearchParams(window.location.search);
-                
                 restoreLabelsFromURL(params);
                 generatePalette();
-                
                 const yearToLoad = parseInt(params.get('year'), 10) || new Date().getFullYear();
                 yearInput.value = yearToLoad;
-                
                 runCalendarGeneration(yearToLoad);
                 restoreDatesFromURL(params);
-                
                 updateCounters();
                 updateColoredDatesList();
 
-                // --- Add Event Listeners ---
-                
                 loadYearBtn.addEventListener('click', () => {
                     const year = parseInt(yearInput.value, 10);
                     runCalendarGeneration(year);
                 });
-                
                 yearInput.addEventListener('keydown', (e) => {
                     if (e.key === 'Enter') {
                         const year = parseInt(yearInput.value, 10);
                         runCalendarGeneration(year);
                     }
                 });
-                
                 saveStateBtn.addEventListener('click', updateURLState);
                 calendarContainer.addEventListener('click', handleDayClick);
-                
-                // Add listener to the dates list for the export buttons
                 datesOutput.addEventListener('click', (e) => {
                     if (e.target.classList.contains('export-btn')) {
                         const key = e.target.dataset.colorKey;
@@ -748,6 +806,5 @@
 
         });
     </script>
-
 </body>
 </html>
